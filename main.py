@@ -1,4 +1,3 @@
-
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -7,6 +6,7 @@ from typing import List, Optional
 import datetime
 import uvicorn
 import logging
+from scraper import AINewsScraper  # Import your scraper class
 
 app = FastAPI(
     title="AI News API",
@@ -132,7 +132,7 @@ async def get_articles(
             ArticlePreview(
                 id=row["id"],
                 title=row["title"],
-                content= row["content"],
+                content=row["content"],
                 url=row["url"],
                 source=row["source"],
                 published_date=row["published_date"],
@@ -170,6 +170,25 @@ async def get_article(article_id: int):
     )
 
 
+@app.post("/scrape", tags=["Scraping"])
+async def trigger_scraping():
+    try:
+        # Create an instance of the scraper class
+        scraper = AINewsScraper()
+
+        # Call the scraper method to fetch articles
+        scraped_count = scraper.scrape_khaleejtimes_ai(pages=3, use_ai_term=True, max_articles_per_page=10)
+
+        if scraped_count == 0:
+            return {"status": "success", "message": "No new articles to scrape."}
+
+        return {"status": "success", "message": f"Successfully scraped {scraped_count} articles."}
+
+    except Exception as e:
+        logging.error(f"Error occurred during scraping: {e}")
+        raise HTTPException(status_code=500, detail=f"Error during scraping: {str(e)}")
+
+
 @app.get("/sources", tags=["Sources"])
 async def get_sources():
     conn = get_db_connection()
@@ -180,7 +199,7 @@ async def get_sources():
 
     conn.close()
 
-    return { "sources": sources }
+    return {"sources": sources}
 
 
 @app.get("/stats", tags=["Statistics"])
@@ -194,7 +213,7 @@ async def get_stats():
 
     # Get count by source
     cursor.execute("SELECT source, COUNT(*) as count FROM articles GROUP BY source")
-    source_counts = { row["source"]: row["count"] for row in cursor.fetchall() }
+    source_counts = {row["source"]: row["count"] for row in cursor.fetchall()}
 
     # Get latest article date
     cursor.execute("SELECT MAX(scrape_date) FROM articles")
